@@ -71,14 +71,42 @@ def enter_values_button():
 
     a_quad = C_quad * vx0  #acceleration quadratic drag
     w0 = vy0
+    b = C_quad
 
-    def y_pos_quad(t): #y position quadratic drag
-        ln = math.log(1 + a_quad * t)
-        return (w0 + g / (2 * a_quad)) * (1.0 / a_quad) * ln - 0.25 * g * t ** 2 - (g * t) / (2 * a_quad)
+    if angle_deg < 30:
+        def y_pos_quad(t): #y position quadratic drag LAT
+            ln = math.log(1 + a_quad * t)
+            return (w0 + g / (2 * a_quad)) * (1.0 / a_quad) * ln - 0.25 * g * t ** 2 - (g * t) / (2 * a_quad)
 
-    # Find ascent time for quadratic drag (when vy = 0)
+    elif 30 <= angle_deg <60: #SAT
+        b_sat = math.sqrt(2 * b)
+        omega_sat = math.sqrt(b_sat * g)
+        phi_sat = math.atan(math.sqrt(b_sat / g) * vy0)
+
+        def y_pos_quad(t):
+            if t <= ascent_time_quad:
+                return (1.0 / b_sat) * math.log(math.cos(phi_sat - omega_sat * t) / math.cos(phi_sat))
+            else:
+                tau = t - ascent_time_quad
+                w0_desc = math.sqrt(1 + b_sat * vy0 ** 2 / g)
+                return (1.0 / b_sat) * (
+                            math.log((2 * w0_desc) / (1 + math.exp(-2 * omega_sat * tau))) - omega_sat * tau)
+
+    else: #HAT
+        omega_hat = math.sqrt(b * g)
+        phi_hat = math.atan(math.sqrt(b / g) * vy0)
+
+        def y_pos_quad(t):
+            if t <= ascent_time_quad:
+                return (1.0 / b) * math.log(math.cos(phi_hat - omega_hat * t) / math.cos(phi_hat))
+            else:
+                tau = t - ascent_time_quad
+                w0_desc = math.sqrt(1 + b * vy0 ** 2 / g)
+                return (1.0 / b) * (math.log((2 * w0_desc) / (1 + math.exp(-2 * omega_hat * tau))) - omega_hat * tau)
+
     def vy_quad(t):
-        return (w0 + g / (2 * a_quad)) / (1 + a_quad * t) - 0.5 * g * t - g / (2 * a_quad)
+        return math.sqrt(g / C_quad) * math.tan(
+            -math.sqrt(C_quad * g) * t + math.atan(math.sqrt(C_quad / g) * vy0))
 
     ascent_time_quad = (1 / math.sqrt(C_quad * g)) * math.atan(math.sqrt(C_quad / g) * vy0)
 
