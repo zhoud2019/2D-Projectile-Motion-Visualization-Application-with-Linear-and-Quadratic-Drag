@@ -74,27 +74,32 @@ def enter_values_button():
     b = C_quad
 
     if angle_deg < 30:
-        def y_pos_quad(t): #y position quadratic drag LAT
+        ascent_time_quad = (1 / math.sqrt(C_quad * g)) * math.atan(math.sqrt(C_quad / g) * vy0)
+
+        def y_pos_quad(t):
             ln = math.log(1 + a_quad * t)
             return (w0 + g / (2 * a_quad)) * (1.0 / a_quad) * ln - 0.25 * g * t ** 2 - (g * t) / (2 * a_quad)
 
-    elif 30 <= angle_deg <60: #SAT
+    elif 30 <= angle_deg < 60:  # SAT
         b_sat = math.sqrt(2 * b)
         omega_sat = math.sqrt(b_sat * g)
         phi_sat = math.atan(math.sqrt(b_sat / g) * vy0)
+        ascent_time_quad = phi_sat / omega_sat  # defined right after its dependencies
 
         def y_pos_quad(t):
             if t <= ascent_time_quad:
-                return (1.0 / b_sat) * math.log(math.cos(phi_sat - omega_sat * t) / math.cos(phi_sat))
+                arg = max(math.cos(phi_sat - omega_sat * t) / math.cos(phi_sat), 1e-10)
+                return (1.0 / b_sat) * math.log(arg)
             else:
                 tau = t - ascent_time_quad
                 w0_desc = math.sqrt(1 + b_sat * vy0 ** 2 / g)
                 return (1.0 / b_sat) * (
-                            math.log((2 * w0_desc) / (1 + math.exp(-2 * omega_sat * tau))) - omega_sat * tau)
+                        math.log((2 * w0_desc) / (1 + math.exp(-2 * omega_sat * tau))) - omega_sat * tau)
 
-    else: #HAT
+    else:  # HAT
         omega_hat = math.sqrt(b * g)
         phi_hat = math.atan(math.sqrt(b / g) * vy0)
+        ascent_time_quad = (1 / math.sqrt(C_quad * g)) * math.atan(math.sqrt(C_quad / g) * vy0)
 
         def y_pos_quad(t):
             if t <= ascent_time_quad:
@@ -104,11 +109,13 @@ def enter_values_button():
                 w0_desc = math.sqrt(1 + b * vy0 ** 2 / g)
                 return (1.0 / b) * (math.log((2 * w0_desc) / (1 + math.exp(-2 * omega_hat * tau))) - omega_hat * tau)
 
+    y_max_quad = y_pos_quad(ascent_time_quad)
+
+    y_max_quad = y_pos_quad(ascent_time_quad)
+
     def vy_quad(t):
         return math.sqrt(g / C_quad) * math.tan(
             -math.sqrt(C_quad * g) * t + math.atan(math.sqrt(C_quad / g) * vy0))
-
-    ascent_time_quad = (1 / math.sqrt(C_quad * g)) * math.atan(math.sqrt(C_quad / g) * vy0)
 
     y_max_quad = y_pos_quad(ascent_time_quad)
 
@@ -298,7 +305,14 @@ def enter_values_button():
                     results_canvas.create_text(W / 2, H / 2 + 100, text=f"Flight Time: {t_total_linear_drag:.2f} s",
                                                font=("Arial", 16), fill="red")
 
-                    results_canvas.create_text(W / 2, H / 2 + 170, text="Quadratic Drag (LAT)",
+                    if angle_deg < 30:
+                        quad_label = "Quadratic Drag (LAT)"
+                    elif 30 <= angle_deg < 60:
+                        quad_label = "Quadratic Drag (SAT)"
+                    else:
+                        quad_label = "Quadratic Drag (HAT)"
+
+                    results_canvas.create_text(W / 2, H / 2 + 170, text=quad_label,
                                                font=("Arial", 18, "bold"), fill="green")
                     results_canvas.create_text(W / 2, H / 2 + 210, text=f"Range: {x_range_quad:.2f} m",
                                                font=("Arial", 16), fill="green")
