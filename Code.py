@@ -7,7 +7,32 @@ main_window.state('zoomed')
 
 g = 9.81  # gravity constant
 
-def enter_values_button():
+
+def show_input_page():
+    """Destroy everything on screen and rebuild the input page."""
+    for widget in main_window.winfo_children():
+        widget.destroy()
+
+    tk.Label(main_window, text="Enter the initial velocity (m/s):", font=("Arial", 14)).place(x=0, y=0)
+    velocity_entry = tk.Entry(main_window, width=30, font=("Arial", 14))
+    velocity_entry.place(x=0, y=30)
+
+    tk.Label(main_window, text="Enter the initial angle (degrees):", font=("Arial", 14)).place(x=0, y=70)
+    angle_entry = tk.Entry(main_window, width=30, font=("Arial", 14))
+    angle_entry.place(x=0, y=100)
+
+    tk.Label(main_window, text="Enter the mass (kg):", font=("Arial", 14)).place(x=0, y=140)
+    mass_entry = tk.Entry(main_window, width=30, font=("Arial", 14))
+    mass_entry.place(x=0, y=170)
+
+    tk.Button(
+        main_window, text="Click to enter values!",
+        bg="blue", fg="white", font=("Arial", 14),
+        command=lambda: enter_values_button(velocity_entry, angle_entry, mass_entry)
+    ).place(x=0, y=210)
+
+
+def enter_values_button(initial_velocity_entry, initial_angle_entry, initial_mass_entry):
     # Get inputs
     v0 = float(initial_velocity_entry.get())
     angle_deg = float(initial_angle_entry.get())
@@ -31,45 +56,41 @@ def enter_values_button():
 
     ascent_time_linear_drag = (1.0 / k) * math.log(1.0 + (k * v0 * math.sin(alpha)) / g)
 
-    def y_ascent_linear_drag(t): #ascent time linear drag
+    def y_ascent_linear_drag(t):
         return -(g * t) / k + ((g + k * v0 * math.sin(alpha)) / k ** 2) * (1 - math.exp(-k * t))
 
     y_max_linear_drag = y_ascent_linear_drag(ascent_time_linear_drag)
 
-    def gamma(k, t): #gamma function
+    def gamma(k, t):
         if t == 0:
             return 0.5
         return (math.exp(-k * t) - 1 + k * t) / (k ** 2 * t ** 2)
 
-    descent_time_linear_drag = ((2 * v0 * math.sin(alpha)) / g) / 2 #initial guess for descent time
+    descent_time_linear_drag = ((2 * v0 * math.sin(alpha)) / g) / 2
 
-    for i in range(100): #100 iterations of the gamma function
+    for i in range(100):
         g_val = gamma(k, descent_time_linear_drag)
-
         t2_new = math.sqrt(y_max_linear_drag / (g * g_val))
-
         descent_time_linear_drag = t2_new
 
-    t_total_linear_drag = ascent_time_linear_drag + descent_time_linear_drag #total flight time
+    t_total_linear_drag = ascent_time_linear_drag + descent_time_linear_drag
 
-    def x_pos_linear_drag(t): #x position linear drag
+    def x_pos_linear_drag(t):
         return (v0 * math.cos(alpha) / k) * (1 - math.exp(-k * t))
 
     x_range_linear = x_pos_linear_drag(t_total_linear_drag)
 
-    def y_descent_linear_drag(t): #y position linear drag
+    def y_descent_linear_drag(t):
         return (g * t) / k - (g / k ** 2) * (1 - math.exp(-k * t))
 
-    # Quadratic drag using LAT approximation
-    # C = 0.22 * D^2 / m, assume D = 0.1m (diameter), so C = 0.22 * 0.01 / mass
+    # Quadratic drag
+    vx0 = v0 * math.cos(alpha)
+    vy0 = v0 * math.sin(alpha)
 
-    vx0 = v0 * math.cos(alpha) #initial x velocity
-    vy0 = v0 * math.sin(alpha) #initail y velocity
-
-    def x_pos_quad(t): #x position quadratic drag
+    def x_pos_quad(t):
         return (1.0 / C_quad) * math.log(C_quad * vx0 * t + 1)
 
-    a_quad = C_quad * vx0  #acceleration quadratic drag
+    a_quad = C_quad * vx0
     w0 = vy0
     b = C_quad
 
@@ -84,7 +105,7 @@ def enter_values_button():
         b_sat = math.sqrt(2 * b)
         omega_sat = math.sqrt(b_sat * g)
         phi_sat = math.atan(math.sqrt(b_sat / g) * vy0)
-        ascent_time_quad = phi_sat / omega_sat  # defined right after its dependencies
+        ascent_time_quad = phi_sat / omega_sat
 
         def y_pos_quad(t):
             if t <= ascent_time_quad:
@@ -111,24 +132,16 @@ def enter_values_button():
 
     y_max_quad = y_pos_quad(ascent_time_quad)
 
-    y_max_quad = y_pos_quad(ascent_time_quad)
-
-    def vy_quad(t):
-        return math.sqrt(g / C_quad) * math.tan(
-            -math.sqrt(C_quad * g) * t + math.atan(math.sqrt(C_quad / g) * vy0))
-
-    y_max_quad = y_pos_quad(ascent_time_quad)
-
-    # Find total flight time for quadratic drag (when y = 0 again)
-    t_lo2, t_hi2 = ascent_time_quad, ascent_time_quad + 0.1 #Setting the bounds, time interval that contains the landing moment
+    # Find total flight time for quadratic drag
+    t_lo2, t_hi2 = ascent_time_quad, ascent_time_quad + 0.1
     while y_pos_quad(t_hi2) > 0:
-        t_hi2 += 0.1 #Expands the time until y hits negative
+        t_hi2 += 0.1
     for j in range(200):
-        t_mid2 = (t_lo2 + t_hi2) / 2 #take middle as a test point
-        if y_pos_quad(t_mid2) > 0: #if y is positive at the midpoint, then the ball is still in the air. Therefore, there still has to be time
-            t_lo2 = t_mid2         #before it lands onto the ground. Therefore, t_lo2 gets raised.
+        t_mid2 = (t_lo2 + t_hi2) / 2
+        if y_pos_quad(t_mid2) > 0:
+            t_lo2 = t_mid2
         else:
-            t_hi2 = t_mid2 #Else, the ball has landed.
+            t_hi2 = t_mid2
 
     t_total_quad = (t_lo2 + t_hi2) / 2
     x_range_quad = x_pos_quad(t_total_quad)
@@ -146,42 +159,26 @@ def enter_values_button():
     # Draw axes
     canvas.create_line(origin_x, origin_y, W - 60, origin_y, width=4)
     canvas.create_line(origin_x, origin_y, origin_x, 40, width=4)
-
     canvas.create_text(W - 80, origin_y + 30, text="meters", font=("Arial", 14))
     canvas.create_text(origin_x - 20, 25, text="meters", font=("Arial", 14))
 
-    # Scale pixels per meter
+    # Uniform scale so launch angle is visually accurate
     x_pixels = W - origin_x - 80
     y_pixels = origin_y - 40
-
     max_range = max(ideal_range, x_range_linear, x_range_quad, 1)
     max_height = max(ideal_max_height, y_max_linear_drag, y_max_quad, 1)
-
-    pixels_x = x_pixels / max_range
-    pixels_y = y_pixels / max_height
+    pixels_x = min(x_pixels / max_range, y_pixels / max_height)
+    pixels_y = pixels_x
 
     # Ball creation
     ball_r = 10
+    ideal_ball = canvas.create_oval(origin_x - ball_r, origin_y - ball_r,
+                                    origin_x + ball_r, origin_y + ball_r, fill="blue")
+    linear_ball = canvas.create_oval(origin_x - ball_r, origin_y - ball_r,
+                                     origin_x + ball_r, origin_y + ball_r, fill="red")
+    quad_ball = canvas.create_oval(origin_x - ball_r, origin_y - ball_r,
+                                   origin_x + ball_r, origin_y + ball_r, fill="green")
 
-    ideal_ball = canvas.create_oval(
-        origin_x - ball_r, origin_y - ball_r,
-        origin_x + ball_r, origin_y + ball_r,
-        fill="blue"
-    )
-
-    linear_ball = canvas.create_oval(
-        origin_x - ball_r, origin_y - ball_r,
-        origin_x + ball_r, origin_y + ball_r,
-        fill="red"
-    )
-
-    quad_ball = canvas.create_oval(
-        origin_x - ball_r, origin_y - ball_r,
-        origin_x + ball_r, origin_y + ball_r,
-        fill="green"
-    )
-
-    #Trail points
     trail_points_ideal = []
     trail_points_linear_drag = []
     trail_points_quad = []
@@ -191,19 +188,26 @@ def enter_values_button():
     t_quad = [0.0]
     dt = 0.05
 
-    phase = ["ascent"]       # linear drag phase
-    phase_quad = ["moving"]  # quadratic drag phase
+    phase = ["ascent"]
+    phase_quad = ["moving"]
+
+    # Restart button — visible on the simulation canvas
+    restart_btn_canvas = tk.Button(
+        main_window, text="Restart Simulation", bg="orange", fg="white",
+        font=("Arial", 14), command=show_input_page
+    )
+    restart_btn_canvas.place(x=W - 220, y=80)
 
     def simulation():
         def update():
-
-            #Ideal ball
+            # Ideal ball
             current_t_ideal = t_ideal[0]
             if current_t_ideal <= ideal_flight_time:
                 x_ideal_m, y_ideal_m = ideal_position(current_t_ideal)
                 cx_ideal = origin_x + x_ideal_m * pixels_x
                 cy_ideal = origin_y - y_ideal_m * pixels_y
-                canvas.coords(ideal_ball, cx_ideal - ball_r, cy_ideal - ball_r, cx_ideal + ball_r, cy_ideal + ball_r)
+                canvas.coords(ideal_ball, cx_ideal - ball_r, cy_ideal - ball_r,
+                              cx_ideal + ball_r, cy_ideal + ball_r)
                 trail_points_ideal.append((cx_ideal, cy_ideal))
                 if len(trail_points_ideal) > 1:
                     x1, y1 = trail_points_ideal[-2]
@@ -213,9 +217,10 @@ def enter_values_button():
             else:
                 cx_ideal = origin_x + ideal_range * pixels_x
                 cy_ideal = origin_y
-                canvas.coords(ideal_ball, cx_ideal - ball_r, cy_ideal - ball_r, cx_ideal + ball_r, cy_ideal + ball_r)
+                canvas.coords(ideal_ball, cx_ideal - ball_r, cy_ideal - ball_r,
+                              cx_ideal + ball_r, cy_ideal + ball_r)
 
-            #Linear drag ball
+            # Linear drag ball
             current_t_linear = t_linear[0]
             if phase[0] == "ascent":
                 x_m = x_pos_linear_drag(current_t_linear)
@@ -233,7 +238,6 @@ def enter_values_button():
                         x2, y2 = trail_points_linear_drag[-1]
                         canvas.create_line(x1, y1, x2, y2, fill="red", width=2)
                     t_linear[0] += dt
-
             elif phase[0] == "descent":
                 x_m = x_pos_linear_drag(ascent_time_linear_drag + current_t_linear)
                 y_m = y_max_linear_drag - y_descent_linear_drag(current_t_linear)
@@ -253,7 +257,7 @@ def enter_values_button():
                         canvas.create_line(x1, y1, x2, y2, fill="red", width=2)
                     t_linear[0] += dt
 
-            #Quadratic drag ball
+            # Quadratic drag ball
             current_t_quad = t_quad[0]
             if phase_quad[0] == "moving":
                 y_q = y_pos_quad(current_t_quad)
@@ -274,7 +278,7 @@ def enter_values_button():
                         canvas.create_line(x1, y1, x2, y2, fill="green", width=2)
                     t_quad[0] += dt
 
-            #Keep animation running until all three are done
+            # Keep animating until all three are done
             if t_ideal[0] <= ideal_flight_time or phase[0] != "done" or phase_quad[0] != "done":
                 canvas.after(5, update)
                 return
@@ -324,10 +328,17 @@ def enter_values_button():
                     def go_back():
                         results_canvas.destroy()
                         back_button.destroy()
+                        restart_btn_results.destroy()
 
                     back_button = tk.Button(main_window, text="Back", bg="gray", fg="white", font=("Arial", 14),
                                             command=go_back)
                     back_button.place(x=W // 2 - 40, y=H / 2 + 320)
+
+                    restart_btn_results = tk.Button(
+                        main_window, text="Restart Simulation", bg="orange", fg="white",
+                        font=("Arial", 14), command=show_input_page
+                    )
+                    restart_btn_results.place(x=W // 2 - 90, y=H / 2 + 370)
 
                 results_button = tk.Button(main_window, text="Show Results", bg="green", fg="white",
                                            font=("Arial", 14), command=show_results)
@@ -336,37 +347,13 @@ def enter_values_button():
         update()
 
     run_simulation = tk.Button(
-        main_window,
-        text="Run the simulation!",
-        bg="blue",
-        fg="white",
-        font=("Arial", 14),
-        command=simulation
+        main_window, text="Run the simulation!", bg="blue", fg="white",
+        font=("Arial", 14), command=simulation
     )
     run_simulation.place(x=W - 200, y=0)
 
 
-#Input
-initial_velocity_question = tk.Label(main_window, text="Enter the initial velocity (m/s):", font=("Arial", 14))
-initial_velocity_question.place(x=0, y=0)
-initial_velocity_entry = tk.Entry(main_window, width=30, font=("Arial", 14))
-initial_velocity_entry.place(x=0, y=30)
-
-initial_angle_question = tk.Label(main_window, text="Enter the initial angle (degrees):", font=("Arial", 14))
-initial_angle_question.place(x=0, y=70)
-initial_angle_entry = tk.Entry(main_window, width=30, font=("Arial", 14))
-initial_angle_entry.place(x=0, y=100)
-
-initial_mass_question = tk.Label(main_window, text="Enter the mass (kg):", font=("Arial", 14))
-initial_mass_question.place(x=0, y=140)
-initial_mass_entry = tk.Entry(main_window, width=30, font=("Arial", 14))
-initial_mass_entry.place(x=0, y=170)
-
-enter_values = tk.Button(main_window,
-                         text="Click to enter values!",
-                         bg="blue", fg="white",
-                         font=("Arial", 14),
-                         command=enter_values_button)
-enter_values.place(x=0, y=210)
+# --- Initial input page ---
+show_input_page()
 
 main_window.mainloop()
